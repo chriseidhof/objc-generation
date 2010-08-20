@@ -9,14 +9,14 @@ class Pretty a where
   pretty :: a -> Doc
 
 instance Pretty Protocol where
-  pretty (Protocol nm prots ms) = 
+  pretty (Protocol nm prots _) = 
     sym "protocol" <+> text nm <+> (protocols prots)
     $+$
     end
 
 instance Pretty Class where
   pretty c@(Class nm sup prots ivars anoCat _) = vcat
-   [ sym "class" <+> text nm <+> protocols prots
+   [ sym "class" <+> text nm  <+> colon <+> text (className sup) <+> protocols prots
    , block (vcat $ map (addSemi . pretty) ivars)
    , end
    , empty
@@ -56,6 +56,8 @@ instance Pretty BaseType where
   pretty Int   = text "NSInteger"
   pretty Float = text "CGFloat"
   pretty Char  = text "char"
+  pretty Bool  = text "BOOL"
+  pretty Void  = text "void"
 
 instance Pretty ObjectName where
   pretty Id             = text "id"
@@ -84,29 +86,77 @@ instance Pretty PropertySetterSemantics where
   pretty Copy   = text "copy"
 
 
-prettyImpl :: Class -> Doc
-prettyImpl c = empty
+class PrettyImpl a where
+  prettyImpl :: a -> Doc
+
+
+instance PrettyImpl Class where
+  prettyImpl (Class nm _ _ _ _ ms) = 
+    sym "implementation" <+> text nm
+    $+$
+    text "synthesize todo"
+    $+$
+    vcat (map prettyImpl ms)
+    $+$
+    end
+
+instance PrettyImpl Method where
+  prettyImpl m@(Method _ _ _ body) =
+   pretty m
+   $+$
+   block (vcat $ map (addSemi . prettyImpl) body)
+
+instance PrettyImpl Stmt where
+  prettyImpl (ExprStmt e)     = prettyImpl e
+  prettyImpl (AssignStmt i e) = prettyImpl i <+> equals <+> prettyImpl e
+
+instance PrettyImpl LHS where
+  prettyImpl (SimpleLHS i) = text i
+  prettyImpl (NestedLHS l i) = prettyImpl l <> dot <> text i
+
+instance PrettyImpl Expr where
+  prettyImpl (Message e call) = lbrack <> prettyImpl e <+> prettyImpl call <> rbrack
+  prettyImpl (Identifier i)   = text i
+  prettyImpl (Constant c)     = prettyImpl c
+
+instance PrettyImpl MethodCall where
+  prettyImpl (SimpleMethodCall m) = text m
+  prettyImpl (MethodCall args)    = hsep $ map prettyImpl args
+
+instance PrettyImpl (Identifier, Expr) where
+  prettyImpl (i, e) = text i <> colon <> prettyImpl e
+
+instance PrettyImpl Constant where
+  prettyImpl (Nil )       = text "nil"
+  prettyImpl (IntConst i) = text (show i)
+  prettyImpl (StrConst s) = at <> (text (show s))
 
 classType :: Class -> Doc
 classType (Class nm _ _ _ _ _) = pretty (Object (ClassName nm) [])
 
+addSemi :: Doc -> Doc
 addSemi p = p <> semi
 
+protocols :: [Protocol] -> Doc
 protocols []  = empty
 protocols ls  = angles . commaList . map (text . protocolName) $ ls
 
+commaList :: [Doc] -> Doc
 commaList = hsep . punctuate comma
 
+block :: Doc -> Doc
 block d = lbrace $+$ nest 2 d $+$ rbrace
 
+end :: Doc
 end = sym "end"
 
+sym :: String -> Doc
 sym s = at <> text s
 
 angles :: Doc -> Doc
 angles p = langle <> p <> rangle
 
-langle, rangle, at, pointer, minus, plus :: Doc
+langle, rangle, at, pointer, minus, plus, dot :: Doc
 
 langle  = char '<'
 rangle  = char '>'
@@ -114,3 +164,4 @@ at      = char '@'
 pointer = char '*'
 minus   = char '-'
 plus    = char '+'
+dot     = char '.'
