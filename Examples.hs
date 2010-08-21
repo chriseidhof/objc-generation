@@ -3,7 +3,7 @@ module Examples where
 import ObjC
 import Pretty
 import Smart
-
+import Control.Monad.State
 
 main :: IO ()
 main = do
@@ -26,14 +26,24 @@ dealloc = SimpleMethodCall "dealloc"
 
 
 resultController :: Class
-resultController =  clazz "UITResultController" cUIViewController 
-                    [pUITableViewDelegate]
-                <@> (Private, tNSString, "name")
-                <@> (Public,  tInt,      "count")
-                <@> (Public,  tId,       "payload")
+resultController =  newClass "UITResultController" cUIViewController [pUITableViewDelegate] $ do
+  name    <- prop tNSString "name"
+  count   <- prop tNSString "count"
+  payload <- prop tNSString "payload"
+  return ()
 
-(<@>) :: Class -> (Visibility, Type, String) -> Class
-(Class x y z is anonCat ms) <@> (_, t,s) = 
+newClass :: String -> Class -> [Protocol] -> ClassCreation () -> Class
+newClass nm parent prots m = let c = clazz nm parent prots
+                             in  execState m c
+
+type ClassCreation a = State Class a
+
+prop :: Type -> String -> ClassCreation ()
+prop  t s = modify (flip (<@>) (t,s))
+
+
+(<@>) :: Class -> (Type, String) -> Class
+(Class x y z is anonCat ms) <@> (t,s) = 
   Class x y z ((IVar t s) : is) (addProp t s anonCat) (addDealloc t s ms)
 
 (<>) :: Expr -> MethodCall -> Expr
